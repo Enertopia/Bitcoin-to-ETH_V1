@@ -1,14 +1,37 @@
-/eth-btc-swap
+/eth-btc-swap-protocol
     /contracts
-        EthereumSwap.sol
-        BitcoinScripts.txt
-    /migrations
-        1_initial_migration.js
-    /test
-        EthereumSwap.test.js
-    /scripts
-        deploy_contract.js
+        /ethereum
+            EthereumSwap.sol
+            PriceOracleInterface.sol
+        /bitcoin
+            README.md (Instructions for Bitcoin script setup)
     /oracles
-        PriceOracleInterface.sol
+        /chainlink
+            ChainlinkAdapter.sol
+    /scripts
+        deploy_contracts.js
+        verify_contracts.js
+    /test
+        /unit
+            ethereumSwap.test.js
+            priceOracle.test.js
+        /integration
+            ethBtcSwapIntegration.test.js
+    /client
+        /src
+            /components
+                SwapForm.vue
+                TransactionStatus.vue
+            /services
+                blockchainService.js
+                oracleService.js
+        /public
+            index.html
+    /docs
+        SETUP.md
+        ARCHITECTURE.md
+        USAGE_GUIDE.md
+        SECURITY_AUDITS.md
     truffle-config.js
+    hardhat.config.js
     README.md
