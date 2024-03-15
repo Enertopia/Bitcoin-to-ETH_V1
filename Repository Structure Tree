@@ -1,0 +1,14 @@
+/eth-btc-swap
+    /contracts
+        EthereumSwap.sol
+        BitcoinScripts.txt
+    /migrations
+        1_initial_migration.js
+    /test
+        EthereumSwap.test.js
+    /scripts
+        deploy_contract.js
+    /oracles
+        PriceOracleInterface.sol
+    truffle-config.js
+    README.md
