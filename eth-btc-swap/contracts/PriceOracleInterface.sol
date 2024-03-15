@@ -1,33 +1,74 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.4;
 
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 /**
- * @title IAdvancedPriceOracle
- * @dev Interface for advanced price oracle functionality, enabling ETH-BTC swap contracts to access
- * aggregated and timely price data from multiple decentralized sources.
+ * @title EnhancedChainlinkAggregatedPriceOracle
+ * @dev Aggregates price data from multiple Chainlink oracles to provide a robust ETH-BTC exchange rate.
+ * Coded by Emiliano German Solazzi Griminger.
  */
-interface IAdvancedPriceOracle {
+contract EnhancedChainlinkAggregatedPriceOracle is Ownable {
+    AggregatorV3Interface[] public priceFeeds;
+    
+    event PriceFeedAdded(address indexed feedAddress);
+    event PriceFeedRemoved(address indexed feedAddress);
+    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
+
+    constructor(AggregatorV3Interface[] memory _priceFeeds) {
+        for(uint i = 0; i < _priceFeeds.length; i++) {
+            require(address(_priceFeeds[i]) != address(0), "Invalid price feed address");
+            priceFeeds.push(_priceFeeds[i]);
+            emit PriceFeedAdded(address(_priceFeeds[i]));
+        }
+    }
+
     /**
      * @notice Fetches the latest aggregated exchange rate for ETH to BTC.
-     * @dev This method should return the exchange rate with appropriate scaling (e.g., 1e8 for BTC precision).
-     * It aggregates price data from multiple sources to mitigate single point of failure and manipulation risks.
-     * @return price The latest aggregated ETH-BTC exchange rate.
-     * @return timestamp The Unix timestamp at which the price was last updated.
+     * @dev Averages prices from multiple Chainlink feeds. Ensures at least one valid feed is present.
+     * @return averagePrice The latest aggregated ETH-BTC exchange rate.
+     * @return timestamp The Unix timestamp of the last update.
      */
-    function getAggregatedETHBTCPrice() external view returns (uint256 price, uint256 timestamp);
+    function getAggregatedETHBTCPrice() public view returns (uint256 averagePrice, uint256 timestamp) {
+        uint256 sumPrices = 0;
+        uint256 validFeeds = 0;
+        uint256 latestUpdateTime = 0;
+
+        for(uint i = 0; i < priceFeeds.length; i++) {
+            try priceFeeds[i].latestRoundData() returns (, int256 price, , uint256 updatedAt,) {
+                if(price > 0 && updatedAt > latestUpdateTime) {
+                    sumPrices += uint256(price);
+                    validFeeds++;
+                    latestUpdateTime = updatedAt;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        require(validFeeds > 0, "No valid price feeds available");
+        return (sumPrices / validFeeds, latestUpdateTime);
+    }
 
     /**
-     * @notice Registers a contract for receiving real-time price updates.
-     * @dev The registered contract must implement a predefined callback interface to handle the updates.
-     * This allows for dynamic response to market conditions in swap contracts.
-     * @param callbackAddress The address of the contract where price updates will be sent.
+     * @notice Adds a new Chainlink price feed to the aggregator.
+     * @param _priceFeed The address of the new Chainlink price feed.
      */
-    function registerPriceUpdateCallback(address callbackAddress) external;
+    function addPriceFeed(AggregatorV3Interface _priceFeed) public onlyOwner {
+        require(address(_priceFeed) != address(0), "Invalid price feed address");
+        priceFeeds.push(_priceFeed);
+        emit PriceFeedAdded(address(_priceFeed));
+    }
 
     /**
-     * @notice Unregisters a contract from receiving real-time price updates.
-     * @dev Can be used to manage subscriptions or in cases where a contract no longer needs to receive updates.
-     * @param callbackAddress The address of the contract to unregister.
+     * @notice Removes a Chainlink price feed from the aggregator.
+     * @param index The index of the price feed to remove.
      */
-    function unregisterPriceUpdateCallback(address callbackAddress) external;
+    function removePriceFeed(uint index) public onlyOwner {
+        require(index < priceFeeds.length, "Invalid index");
+        emit PriceFeedRemoved(address(priceFeeds[index]));
+        priceFeeds[index] = priceFeeds[priceFeeds.length - 1];
+        priceFeeds.pop();
+    }
 }
