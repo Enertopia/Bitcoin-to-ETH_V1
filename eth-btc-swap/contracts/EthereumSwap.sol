@@ -2,81 +2,48 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
-interface IPriceOracle {
-    function getLatestETHBTCPrice() external view returns (uint256);
-}
+import "./IAdvancedPriceOracle.sol";
 
 contract EthereumSwap is ReentrancyGuard {
     using SafeMath for uint256;
 
-    // State variables
+    IAdvancedPriceOracle public advancedPriceOracle;
     address private owner;
-    IPriceOracle public priceOracle;
+    
+    event ETHLocked(address indexed sender, uint256 amount);
+    event SwapInitiated(address indexed sender, uint256 ethAmount, uint256 estimatedBTC);
+    event PriceUpdated(uint256 newPrice);
 
-    uint256 public totalLocked;
-    mapping(address => uint256) public balances;
-
-    // Events
-    event ETHLocked(address indexed sender, uint256 amount, uint256 timestamp);
-    event ETHBTCSwapInitiated(address indexed sender, uint256 ethAmount, uint256 estimatedBTC, uint256 timestamp);
-    event OwnerChanged(address indexed oldOwner, address indexed newOwner);
-    event OracleChanged(address indexed oldOracle, address indexed newOracle);
-
-    // Modifiers
     modifier onlyOwner() {
-        require(msg.sender == owner, "EthereumSwap: Caller is not the owner");
+        require(msg.sender == owner, "Caller is not the owner");
         _;
     }
 
-    // Constructor
-    constructor(address _priceOracle) {
-        require(_priceOracle != address(0), "EthereumSwap: Invalid price oracle address");
+    constructor(address _advancedPriceOracle) {
+        require(_advancedPriceOracle != address(0), "Invalid oracle address");
         owner = msg.sender;
-        priceOracle = IPriceOracle(_priceOracle);
-    }
-
-    // Functions
-    function lockETH() external payable nonReentrant {
-        require(msg.value > 0, "EthereumSwap: ETH amount is zero");
-        balances[msg.sender] = balances[msg.sender].add(msg.value);
-        totalLocked = totalLocked.add(msg.value);
-        emit ETHLocked(msg.sender, msg.value, block.timestamp);
+        advancedPriceOracle = IAdvancedPriceOracle(_advancedPriceOracle);
     }
 
     function initiateSwap(uint256 _ethAmount) external nonReentrant {
-        require(_ethAmount > 0, "EthereumSwap: ETH amount is zero");
-        require(balances[msg.sender] >= _ethAmount, "EthereumSwap: Insufficient balance");
-        
-        // Subtract the ETH amount from the user's balance
-        balances[msg.sender] = balances[msg.sender].sub(_ethAmount);
-        totalLocked = totalLocked.sub(_ethAmount);
-
-        // Estimate BTC amount
-        uint256 ethPrice = priceOracle.getLatestETHBTCPrice();
-        uint256 estimatedBTC = _ethAmount.mul(ethPrice).div(1e18); // Assuming the price is in 18 decimals
-
-        emit ETHBTCSwapInitiated(msg.sender, _ethAmount, estimatedBTC, block.timestamp);
-
-        // Further logic to handle cross-chain swap will be added here
+        require(_ethAmount > 0, "ETH amount is zero");
+        (uint256 ethPrice, uint256 lastUpdated) = advancedPriceOracle.getAggregatedETHBTCPrice();
+        require(block.timestamp.sub(lastUpdated) < 10 minutes, "Price data too old");
+        uint256 estimatedBTC = _ethAmount.mul(ethPrice).div(1e8); // Assuming price scale is 1e8 for BTC
+        emit SwapInitiated(msg.sender, _ethAmount, estimatedBTC);
+        // Further swap logic...
     }
 
-    function changeOwner(address _newOwner) external onlyOwner {
-        require(_newOwner != address(0), "EthereumSwap: New owner is the zero address");
-        emit OwnerChanged(owner, _newOwner);
-        owner = _newOwner;
+    function onPriceUpdate(uint256 newPrice) external {
+        require(msg.sender == address(advancedPriceOracle), "Unauthorized source");
+        emit PriceUpdated(newPrice);
+        // Handle price update, e.g., adjust ongoing swaps
     }
 
-    function updatePriceOracle(address _newOracle) external onlyOwner {
-        require(_newOracle != address(0), "EthereumSwap: New oracle is the zero address");
-        emit OracleChanged(address(priceOracle), _newOracle);
-        priceOracle = IPriceOracle(_newOracle);
-    }
+    // Ownership and Oracle management functions...
 
-    // View functions
     function getBalance(address _user) external view returns (uint256) {
-        return balances[_user];
+        // Balance fetching logic...
     }
 }
